@@ -213,7 +213,7 @@ class OwnConfirmView(discord.ui.View):
         self.manage_view = manage_view
         self.approve = approve
 
-    @discord.ui.button(label="Confirm override", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="Override", style=discord.ButtonStyle.danger)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(ReasonModal(self.manage_view, self.approve))
 
@@ -237,7 +237,7 @@ class OverrideConfirmView(discord.ui.View):
         self.user_id = user_id
         self.action = action
 
-    @discord.ui.button(label="Confirm override", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="Override", style=discord.ButtonStyle.danger)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.user_id:
             return await interaction.response.send_message("This isn't yours to confirm.", ephemeral=True)
@@ -815,13 +815,25 @@ class LOA(commands.Cog):
             return await interaction.response.send_message(
                 "Couldn't find that LOA for that member.", ephemeral=True
             )
-        warning = "⚠️ **Override:** this is your own LOA record.\n\n" if own else ""
-        await interaction.response.send_message(
-            f"{warning}Delete this LOA for {member.mention}? This removes it from their record and the "
-            f"database (it stops counting toward their monthly limit).\n\n{describe_loa(doc, utcnow())}",
-            view=ConfirmDeleteView(self, doc, override_used=own),
-            ephemeral=True,
+        prompt = (
+            f"Delete this LOA for {member.mention}? This removes it from their record and the "
+            f"database (it stops counting toward their monthly limit).\n\n{describe_loa(doc, utcnow())}"
         )
+        if own:
+            # Step 1: the Override button. Step 2 (after pressing it): the normal Delete / Cancel buttons.
+            async def go(inter):
+                await inter.response.edit_message(
+                    content=f"⚠️ **Override accepted.** {prompt}",
+                    view=ConfirmDeleteView(self, doc, override_used=True),
+                )
+
+            return await interaction.response.send_message(
+                "⚠️ This is **your own LOA record**. Press **Override** to continue.\n\n"
+                f"{describe_loa(doc, utcnow())}",
+                view=OverrideConfirmView(interaction.user.id, go),
+                ephemeral=True,
+            )
+        await interaction.response.send_message(prompt, view=ConfirmDeleteView(self, doc), ephemeral=True)
 
     @loadelete.autocomplete("entry")
     async def loadelete_entry_autocomplete(self, interaction: discord.Interaction, current: str):
